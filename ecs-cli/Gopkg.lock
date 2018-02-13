@@ -66,13 +66,11 @@
   revision = "e30f1e79f3cd72542f2026ceec18d3bd67ab859c"
 
 [[projects]]
-  branch = "master"
   name = "github.com/docker/libcompose"
   packages = ["cli/app","cli/command","config","logger","lookup","project","project/events","project/options","utils","version","yaml"]
   revision = "57bd716502dcbe1799f026148016022b0f3b989c"
 
 [[projects]]
-  branch = "master"
   name = "github.com/flynn/go-shlex"
   packages = ["."]
   revision = "3f9db97f856818214da2e1057f8ad84803971cff"
@@ -194,6 +192,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "17f3a45e6fd9d0c80cbd7ec0e69717669ffba283b5332d66438311b4e5051007"
+  inputs-digest = "2d99798c7ff13359605093e507c2580a909f3cb66a939c25af816149771f5185"
   solver-name = "gps-cdcl"
   solver-version = 1
