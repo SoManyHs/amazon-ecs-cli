@@ -99,7 +99,10 @@ func ConvertToTaskDefinition(context *project.Context, volumeConfigs map[string]
 		taskRoleArn = taskDefParams.taskRoleArn
 	}
 
-	volumes := ConvertToVolumes(volumeConfigs)
+	volumes, err := ConvertToVolumes(volumeConfigs)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create containerDefinitions
 	containerDefinitions := []*ecs.ContainerDefinition{}
@@ -766,7 +769,9 @@ func ConvertToMemoryInMB(bytes int64) int64 {
 	return memory
 }
 
-func ConvertToVolumes(volumeConfigs map[string]*config.VolumeConfig) *volumes {
+// ConvertToVolumes converts the VolumeConfigs map on a libcompose project into
+// a Volumes struct and populates the volumeEmptyHost field with any named volumes
+func ConvertToVolumes(volumeConfigs map[string]*config.VolumeConfig) (*volumes, error) {
 	volumes := &volumes{
 		volumeWithHost: make(map[string]string), // map with key:=hostSourcePath value:=VolumeName
 	}
@@ -775,19 +780,21 @@ func ConvertToVolumes(volumeConfigs map[string]*config.VolumeConfig) *volumes {
 	if volumeConfigs != nil {
 		for name, config := range volumeConfigs {
 			if config != nil {
+				// NOTE: If Driver field is not empty, this
+				// will add a prefix to the named volume on the container
 				if config.Driver != "" {
-					log.WithFields(log.Fields{
-						"volume name": name,
-						"option name": "driver",
-					}).Warn("Skipping unsupported YAML option...")
+					return nil, errors.New("Volume driver is not supported")
 				}
+				// Driver Options must relate to a specific volume driver
 				if len(config.DriverOpts) != 0 {
-					log.WithFields(log.Fields{
-						"volume name": name,
-						"option name": "driver_opts",
-					}).Warn("Skipping unsupported YAML option...")
+					return nil, errors.New("Volume driver options is not supported")
 				}
+				// NOTE: explicitly setting external to false
+				// will cause compose up to fail, but if not
+				// spcified false will be set as default empty
+				// value.
 				if config.External.External {
+					return nil, errors.New("External option is not supported")
 					log.WithFields(log.Fields{
 						"volume name": name,
 						"option name": "external",
@@ -798,5 +805,5 @@ func ConvertToVolumes(volumeConfigs map[string]*config.VolumeConfig) *volumes {
 		}
 	}
 
-	return volumes
+	return volumes, nil
 }
