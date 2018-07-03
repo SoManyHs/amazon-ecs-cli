@@ -174,6 +174,9 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 
 		ecsMemResInMB := adapter.ConvertToMemoryInMB(int64(ecsContainerDef.MemoryReservation))
 		memRes = getResourceValue(inputCfg.Name, memRes, ecsMemResInMB, "MemoryReservation")
+		if ecsContainerDef.HealthCheck != nil {
+			overrideHealthCheck(outputContDef, ecs.HealthCheck(*ecsContainerDef.HealthCheck))
+		}
 	}
 
 	// One or both of memory and memoryReservation is required to register a task definition with ECS
@@ -202,6 +205,29 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 	}
 
 	return outputContDef, nil
+}
+
+// ECS Params healthcheck overrides the healthcheck from docker compose
+func overrideHealthCheck(outputContDef *ecs.ContainerDefinition, ecsParamsHealth ecs.HealthCheck) {
+	if outputContDef.HealthCheck == nil {
+		outputContDef.SetHealthCheck(&ecsParamsHealth)
+		return
+	}
+	if len(ecsParamsHealth.Command) > 0 {
+		outputContDef.HealthCheck.SetCommand(ecsParamsHealth.Command)
+	}
+	if ecsParamsHealth.Interval != nil {
+		outputContDef.HealthCheck.Interval = ecsParamsHealth.Interval
+	}
+	if ecsParamsHealth.Retries != nil {
+		outputContDef.HealthCheck.Retries = ecsParamsHealth.Retries
+	}
+	if ecsParamsHealth.StartPeriod != nil {
+		outputContDef.HealthCheck.StartPeriod = ecsParamsHealth.StartPeriod
+	}
+	if ecsParamsHealth.Timeout != nil {
+		outputContDef.HealthCheck.Timeout = ecsParamsHealth.Timeout
+	}
 }
 
 func getResourceValue(serviceName string, inputVal, ecsVal int64, option string) int64 {
