@@ -118,61 +118,64 @@ func (cd *ContainerDef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // HealthCheck.UnmarshalYAML is a custom unmarshaler for healthcheck that parses
 // both the docker compose and ECS syntaxes
-func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	healthCheck := HealthCheck{}
+func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
 
 	// set default value for retries
 	rawHealthCheck := healthCheckFormat{}
-	if err := unmarshal(&rawHealthCheck); err != nil {
+	if err = unmarshal(&rawHealthCheck); err != nil {
 		return err
 	}
 
-	if len(rawHealthCheck.Command) > 0 && len(rawHealthCheck.Test) > 0 {
-		return fmt.Errorf("healthcheck.test and healthcheck.command can not both be specified")
+	*h, err = rawHealthCheck.toHealthCheck()
+	return err
+}
+
+func (h *healthCheckFormat) toHealthCheck() (HealthCheck, error) {
+	healthCheck := HealthCheck{}
+	if len(h.Command) > 0 && len(h.Test) > 0 {
+		return healthCheck, fmt.Errorf("healthcheck.test and healthcheck.command can not both be specified")
 	}
 
-	if len(rawHealthCheck.Command) > 0 {
-		setHealthCheckCommand(rawHealthCheck.Command, &healthCheck)
+	if len(h.Command) > 0 {
+		healthCheck.Command = aws.StringSlice(healthCheckCommand(h.Command))
 	}
 
-	if len(rawHealthCheck.Test) > 0 {
-		setHealthCheckCommand(rawHealthCheck.Test, &healthCheck)
+	if len(h.Test) > 0 {
+		healthCheck.Command = aws.StringSlice(healthCheckCommand(h.Test))
 	}
 
-	if rawHealthCheck.Retries != 0 {
-		healthCheck.Retries = &rawHealthCheck.Retries
+	if h.Retries != 0 {
+		healthCheck.Retries = &h.Retries
 	}
 
-	timeout, err := parseHealthCheckTime(rawHealthCheck.Timeout)
+	timeout, err := parseHealthCheckTime(h.Timeout)
 	if err != nil {
-		return err
+		return healthCheck, err
 	}
 	healthCheck.Timeout = timeout
 
-	startPeriod, err := parseHealthCheckTime(rawHealthCheck.StartPeriod)
+	startPeriod, err := parseHealthCheckTime(h.StartPeriod)
 	if err != nil {
-		return err
+		return healthCheck, err
 	}
 	healthCheck.StartPeriod = startPeriod
 
-	interval, err := parseHealthCheckTime(rawHealthCheck.Interval)
+	interval, err := parseHealthCheckTime(h.Interval)
 	if err != nil {
-		return err
+		return healthCheck, err
 	}
 	healthCheck.Interval = interval
 
-	*h = healthCheck
-
-	return nil
+	return healthCheck, nil
 }
 
 // parses the command/test field for healthcheck
-func setHealthCheckCommand(command []string, healthCheck *HealthCheck) {
+func healthCheckCommand(command []string) []string {
 	if len(command) == 1 {
 		// command/test was specified as a single string which wraps it in /bin/sh (CMD-SHELL)
 		command = append([]string{"CMD-SHELL"}, command...)
 	}
-	healthCheck.Command = aws.StringSlice(command)
+	return command
 
 }
 
