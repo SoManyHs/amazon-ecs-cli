@@ -430,7 +430,14 @@ task_definition:
         interval: 10m
         timeout: 15s
         retries: 5
-        start_period: 50`
+        start_period: 50
+    elasticsearch:
+      healthcheck:
+        command: curl http://example.com
+        interval: 10
+        timeout: 15
+        retries: 5
+        start_period: 50s`
 
 	mysqlExpectedHealthCheck := ecs.HealthCheck{
 		Command:     aws.StringSlice([]string{"CMD", "curl", "-f", "http://localhost"}),
@@ -456,6 +463,14 @@ task_definition:
 		StartPeriod: aws.Int64(50),
 	}
 
+	elasticsearchExpectedHealthCheck := ecs.HealthCheck{
+		Command:     aws.StringSlice([]string{"CMD-SHELL", "curl http://example.com"}),
+		Interval:    aws.Int64(10),
+		Timeout:     aws.Int64(15),
+		Retries:     aws.Int64(5),
+		StartPeriod: aws.Int64(50),
+	}
+
 	content := []byte(ecsParamsString)
 
 	tmpfile, err := ioutil.TempFile("", "ecs-params")
@@ -476,15 +491,17 @@ task_definition:
 		taskDef := ecsParams.TaskDefinition
 
 		containerDefs := taskDef.ContainerDefinitions
-		assert.Equal(t, 3, len(containerDefs), "Expected 3 containers")
+		assert.Equal(t, 4, len(containerDefs), "Expected 4 containers")
 
 		mysql := containerDefs["mysql"]
 		wordpress := containerDefs["wordpress"]
 		logstash := containerDefs["logstash"]
+		elasticsearch := containerDefs["elasticsearch"]
 
 		verifyHealthCheck(t, mysqlExpectedHealthCheck, ecs.HealthCheck(*mysql.HealthCheck))
 		verifyHealthCheck(t, wordpressExpectedHealthCheck, ecs.HealthCheck(*wordpress.HealthCheck))
 		verifyHealthCheck(t, logstashExpectedHealthCheck, ecs.HealthCheck(*logstash.HealthCheck))
+		verifyHealthCheck(t, elasticsearchExpectedHealthCheck, ecs.HealthCheck(*elasticsearch.HealthCheck))
 	}
 }
 
