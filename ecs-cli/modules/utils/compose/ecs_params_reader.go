@@ -56,14 +56,11 @@ type ContainerDef struct {
 	Cpu               int64                  `yaml:"cpu_shares"`
 	Memory            libYaml.MemStringorInt `yaml:"mem_limit"`
 	MemoryReservation libYaml.MemStringorInt `yaml:"mem_reservation"`
-	HealthCheck       HealthCheck            `yaml:"healthcheck"`
+	HealthCheck       *HealthCheck           `yaml:"healthcheck"`
 }
 
 // HealthCheck holds the ECS container health check
-// https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_HealthCheck.html
-type HealthCheck struct {
-	ecs.HealthCheck
-}
+type HealthCheck ecs.HealthCheck
 
 // healthCheckFormat is used to unmarshal the different healthcheck formats supported by ECS Params
 type healthCheckFormat struct {
@@ -120,16 +117,12 @@ func (cd *ContainerDef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // HealthCheck.UnmarshalYAML is a custom unmarshaler for healthcheck that parses
-// both the docker compose and ecs inspired syntaxes
+// both the docker compose and ECS syntaxes
 func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	// All of the different health check formats are mutually exclusive in each of their fields
-	// This makes parsing simple.
 	healthCheck := HealthCheck{}
 
 	// set default value for retries
-	rawHealthCheck := healthCheckFormat{
-		Retries: 3,
-	}
+	rawHealthCheck := healthCheckFormat{}
 	if err := unmarshal(&rawHealthCheck); err != nil {
 		return err
 	}
@@ -139,32 +132,34 @@ func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if len(rawHealthCheck.Command) > 0 {
-		parseHealthCheckCommand(rawHealthCheck.Command, &healthCheck)
+		setHealthCheckCommand(rawHealthCheck.Command, &healthCheck)
 	}
 
 	if len(rawHealthCheck.Test) > 0 {
-		parseHealthCheckCommand(rawHealthCheck.Test, &healthCheck)
+		setHealthCheckCommand(rawHealthCheck.Test, &healthCheck)
 	}
 
-	healthCheck.SetRetries(rawHealthCheck.Retries)
+	if rawHealthCheck.Retries != 0 {
+		healthCheck.Retries = &rawHealthCheck.Retries
+	}
 
-	if timeout, err := parseHealthCheckTimeField(rawHealthCheck.Timeout); err == nil {
-		healthCheck.Timeout = timeout
-	} else {
+	timeout, err := parseHealthCheckTime(rawHealthCheck.Timeout)
+	if err != nil {
 		return err
 	}
+	healthCheck.Timeout = timeout
 
-	if startPeriod, err := parseHealthCheckTimeField(rawHealthCheck.StartPeriod); err == nil {
-		healthCheck.StartPeriod = startPeriod
-	} else {
+	startPeriod, err := parseHealthCheckTime(rawHealthCheck.StartPeriod)
+	if err != nil {
 		return err
 	}
+	healthCheck.StartPeriod = startPeriod
 
-	if interval, err := parseHealthCheckTimeField(rawHealthCheck.Interval); err == nil {
-		healthCheck.Interval = interval
-	} else {
+	interval, err := parseHealthCheckTime(rawHealthCheck.Interval)
+	if err != nil {
 		return err
 	}
+	healthCheck.Interval = interval
 
 	*h = healthCheck
 
@@ -172,20 +167,17 @@ func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // parses the command/test field for healthcheck
-func parseHealthCheckCommand(command []string, healthCheck *HealthCheck) {
+func setHealthCheckCommand(command []string, healthCheck *HealthCheck) {
 	if len(command) == 1 {
-		// command/test was specified as a string which wraps it in /bin/sh
-		healthCheck.SetCommand(aws.StringSlice([]string{
-			"CMD-SHELL",
-			command[0],
-		}))
-	} else {
-		healthCheck.SetCommand(aws.StringSlice(command))
+		// command/test was specified as a single string which wraps it in /bin/sh (CMD-SHELL)
+		command = append([]string{"CMD-SHELL"}, command...)
 	}
+	healthCheck.Command = aws.StringSlice(command)
+
 }
 
 // parses a health check time string which could be a duration or an integer
-func parseHealthCheckTimeField(field string) (*int64, error) {
+func parseHealthCheckTime(field string) (*int64, error) {
 	if field != "" {
 		duration, err := time.ParseDuration(field)
 		if err == nil {
