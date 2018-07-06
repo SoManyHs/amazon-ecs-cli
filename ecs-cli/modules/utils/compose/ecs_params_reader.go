@@ -59,11 +59,9 @@ type ContainerDef struct {
 	HealthCheck       *HealthCheck           `yaml:"healthcheck"`
 }
 
-// HealthCheck holds the ECS container health check
-type HealthCheck ecs.HealthCheck
-
-// healthCheckFormat is used to unmarshal the different healthcheck formats supported by ECS Params
-type healthCheckFormat struct {
+// HealthCheck holds all possible fields for HealthCheck, including fields
+// supported by docker compose vs ECS
+type HealthCheck struct {
 	Test        libYaml.Stringorslice
 	Command     libYaml.Stringorslice
 	Timeout     string `yaml:"timeout,omitempty"`
@@ -116,57 +114,43 @@ func (cd *ContainerDef) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// HealthCheck.UnmarshalYAML is a custom unmarshaler for healthcheck that parses
-// both the docker compose and ECS syntaxes
-func (h *HealthCheck) UnmarshalYAML(unmarshal func(interface{}) error) (err error) {
-
-	// set default value for retries
-	rawHealthCheck := healthCheckFormat{}
-	if err = unmarshal(&rawHealthCheck); err != nil {
-		return err
-	}
-
-	*h, err = rawHealthCheck.toHealthCheck()
-	return err
-}
-
-func (h *healthCheckFormat) toHealthCheck() (HealthCheck, error) {
-	healthCheck := HealthCheck{}
+func ConvertToECSHealthCheck(h *HealthCheck) (*ecs.HealthCheck, error) {
+	ecsHealthCheck := &ecs.HealthCheck{}
 	if len(h.Command) > 0 && len(h.Test) > 0 {
-		return healthCheck, fmt.Errorf("healthcheck.test and healthcheck.command can not both be specified")
+		return nil, fmt.Errorf("healthcheck.test and healthcheck.command can not both be specified")
 	}
 
 	if len(h.Command) > 0 {
-		healthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Command))
+		ecsHealthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Command))
 	}
 
 	if len(h.Test) > 0 {
-		healthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Test))
+		ecsHealthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Test))
 	}
 
 	if h.Retries != 0 {
-		healthCheck.Retries = &h.Retries
+		ecsHealthCheck.Retries = &h.Retries
 	}
 
 	timeout, err := parseHealthCheckTime(h.Timeout)
 	if err != nil {
-		return healthCheck, err
+		return ecsHealthCheck, err
 	}
-	healthCheck.Timeout = timeout
+	ecsHealthCheck.Timeout = timeout
 
 	startPeriod, err := parseHealthCheckTime(h.StartPeriod)
 	if err != nil {
-		return healthCheck, err
+		return ecsHealthCheck, err
 	}
-	healthCheck.StartPeriod = startPeriod
+	ecsHealthCheck.StartPeriod = startPeriod
 
 	interval, err := parseHealthCheckTime(h.Interval)
 	if err != nil {
-		return healthCheck, err
+		return ecsHealthCheck, err
 	}
-	healthCheck.Interval = interval
+	ecsHealthCheck.Interval = interval
 
-	return healthCheck, nil
+	return ecsHealthCheck, nil
 }
 
 // parses the command/test field for healthcheck
@@ -176,7 +160,6 @@ func getHealthCheckCommand(command []string) []string {
 		command = append([]string{"CMD-SHELL"}, command...)
 	}
 	return command
-
 }
 
 // parses a health check time string which could be a duration or an integer

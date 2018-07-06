@@ -116,13 +116,6 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 	if inputCfg.Hostname != "" {
 		outputContDef.SetHostname(inputCfg.Hostname)
 	}
-	if hasHealthCheck(inputCfg, ecsContainerDef) {
-		healthcheck, err := getHealthcheck(inputCfg, ecsContainerDef)
-		if err != nil {
-			return nil, err
-		}
-		outputContDef.SetHealthCheck(healthcheck)
-	}
 	outputContDef.SetImage(inputCfg.Image)
 	outputContDef.SetLinks(aws.StringSlice(inputCfg.Links)) // TODO, read from external links
 	outputContDef.SetLogConfiguration(inputCfg.LogConfiguration)
@@ -169,6 +162,7 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 	cpu := inputCfg.CPU
 	mem := inputCfg.Memory
 	memRes := inputCfg.MemoryReservation
+	healthCheck := inputCfg.HealthCheck
 
 	// Set essential & resource fields from ecs-params file, if present
 	if ecsContainerDef != nil {
@@ -182,6 +176,12 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 
 		ecsMemResInMB := adapter.ConvertToMemoryInMB(int64(ecsContainerDef.MemoryReservation))
 		memRes = resolveIntResourceOverride(inputCfg.Name, memRes, ecsMemResInMB, "MemoryReservation")
+
+		healthCheck, err := resolveHealthCheck(inputCfg.Name, healthCheck, ecsContainerDef.HealthCheck)
+		if err != nil {
+			return nil, err
+		}
+		healthCheck = healthCheck
 	}
 
 	// One or both of memory and memoryReservation is required to register a task definition with ECS
@@ -209,47 +209,34 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 		outputContDef.SetMemoryReservation(memRes)
 	}
 
+	if healthCheck != nil {
+		outputContDef.SetHealthCheck(healthCheck)
+	}
+
 	return outputContDef, nil
 }
 
-// returns true if the container has a healthcheck from compose or ecs params
-func hasHealthCheck(inputCfg *adapter.ContainerConfig, ecsContainerDef *ContainerDef) bool {
-	if inputCfg.HealthCheck != nil {
-		return true
+func resolveHealthCheck(serviceName string, healthCheck *ecs.HealthCheck, ecsParamsHealthCheck *HealthCheck) (*ecs.HealthCheck, error) {
+	if ecsParamsHealthCheck == nil {
+		return healthCheck, nil
+	}
+	healthCheckOverride, err := ConvertToECSHealthCheck(ecsParamsHealthCheck)
+	if err != nil {
+		return nil, err
 	}
 
-	if ecsContainerDef != nil && ecsContainerDef.HealthCheck != nil {
-		return true
-	}
-
-	return false
-
-}
-
-// sets the healthcheck with the ECS Params as an override
-func getHealthcheck(inputCfg *adapter.ContainerConfig, ecsContainerDef *ContainerDef) (*ecs.HealthCheck, error) {
-	healthcheck := inputCfg.HealthCheck
-	if healthcheck == nil {
-		healthcheck = &ecs.HealthCheck{}
-	}
-
-	if ecsContainerDef != nil && ecsContainerDef.HealthCheck != nil {
-		ecsParamsHealth := ecsContainerDef.HealthCheck
-
-		healthcheck.Command = resolveStringSliceResourceOverride(inputCfg.Name, healthcheck.Command, ecsParamsHealth.Command, "healthcheck command")
-		healthcheck.Interval = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Interval, ecsParamsHealth.Interval, "healthcheck interval")
-		healthcheck.Retries = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Retries, ecsParamsHealth.Retries, "healthcheck retries")
-		healthcheck.Timeout = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Timeout, ecsParamsHealth.Timeout, "healthcheck timeout")
-		healthcheck.StartPeriod = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.StartPeriod, ecsParamsHealth.StartPeriod, "healthcheck start_period")
-
-	}
+	healthCheck.Command = resolveStringSliceResourceOverride(serviceName, healthCheck.Command, healthCheckOverride.Command, "healthcheck command")
+	healthCheck.Interval = resolveIntPointerResourceOverride(serviceName, healthCheck.Interval, healthCheckOverride.Interval, "healthcheck interval")
+	healthCheck.Retries = resolveIntPointerResourceOverride(serviceName, healthCheck.Retries, healthCheckOverride.Retries, "healthcheck retries")
+	healthCheck.Timeout = resolveIntPointerResourceOverride(serviceName, healthCheck.Timeout, healthCheckOverride.Timeout, "healthcheck timeout")
+	healthCheck.StartPeriod = resolveIntPointerResourceOverride(serviceName, healthCheck.StartPeriod, healthCheckOverride.StartPeriod, "healthcheck start_period")
 
 	// validate healthcheck
-	if len(healthcheck.Command) == 0 {
-		return healthcheck, fmt.Errorf("Test/Command is a required field for container healthcheck")
+	if len(healthCheck.Command) == 0 {
+		return healthCheck, fmt.Errorf("Test/Command is a required field for container healthcheck")
 	}
 
-	return healthcheck, nil
+	return healthCheck, nil
 }
 
 func resolveIntResourceOverride(serviceName string, composeVal, ecsParamsVal int64, option string) int64 {
