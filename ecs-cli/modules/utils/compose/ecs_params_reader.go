@@ -137,11 +137,11 @@ func (h *healthCheckFormat) toHealthCheck() (HealthCheck, error) {
 	}
 
 	if len(h.Command) > 0 {
-		healthCheck.Command = aws.StringSlice(healthCheckCommand(h.Command))
+		healthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Command))
 	}
 
 	if len(h.Test) > 0 {
-		healthCheck.Command = aws.StringSlice(healthCheckCommand(h.Test))
+		healthCheck.Command = aws.StringSlice(getHealthCheckCommand(h.Test))
 	}
 
 	if h.Retries != 0 {
@@ -170,7 +170,7 @@ func (h *healthCheckFormat) toHealthCheck() (HealthCheck, error) {
 }
 
 // parses the command/test field for healthcheck
-func healthCheckCommand(command []string) []string {
+func getHealthCheckCommand(command []string) []string {
 	if len(command) == 1 {
 		// command/test was specified as a single string which wraps it in /bin/sh (CMD-SHELL)
 		command = append([]string{"CMD-SHELL"}, command...)

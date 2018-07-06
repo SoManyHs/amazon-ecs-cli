@@ -620,6 +620,14 @@ task_definition:
       healthcheck:
         start_period: 10`
 
+	mysqlExpectedHealthCheck := ecs.HealthCheck{
+		Command:     nil,
+		Interval:    nil,
+		Timeout:     nil,
+		Retries:     nil,
+		StartPeriod: aws.Int64(10),
+	}
+
 	content := []byte(ecsParamsString)
 
 	tmpfile, err := ioutil.TempFile("", "ecs-params")
@@ -644,11 +652,7 @@ task_definition:
 
 		mysql := containerDefs["mysql"]
 
-		assert.Len(t, mysql.HealthCheck.Command, 0, "Expected health check command to be empty")
-		assert.Nil(t, mysql.HealthCheck.Interval, "Expected interval to be nil")
-		assert.Nil(t, mysql.HealthCheck.Timeout, "Expected timeout to be nil")
-		assert.Nil(t, mysql.HealthCheck.Retries, "Expected retries to be nil")
-		assert.Equal(t, aws.Int64(10), mysql.HealthCheck.StartPeriod)
+		verifyHealthCheck(t, mysqlExpectedHealthCheck, ecs.HealthCheck(*mysql.HealthCheck))
 	}
 }
 
