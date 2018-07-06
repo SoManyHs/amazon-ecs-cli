@@ -14,6 +14,8 @@
 package utils
 
 import (
+	"fmt"
+
 	"github.com/aws/amazon-ecs-cli/ecs-cli/modules/cli/compose/adapter"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ecs"
@@ -114,7 +116,13 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 	if inputCfg.Hostname != "" {
 		outputContDef.SetHostname(inputCfg.Hostname)
 	}
-	outputContDef.SetHealthCheck(inputCfg.HealthCheck)
+	if hasHealthCheck(inputCfg, ecsContainerDef) {
+		healthcheck, err := getHealthcheck(inputCfg, ecsContainerDef)
+		if err != nil {
+			return nil, err
+		}
+		outputContDef.SetHealthCheck(healthcheck)
+	}
 	outputContDef.SetImage(inputCfg.Image)
 	outputContDef.SetLinks(aws.StringSlice(inputCfg.Links)) // TODO, read from external links
 	outputContDef.SetLogConfiguration(inputCfg.LogConfiguration)
@@ -167,16 +175,13 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 		outputContDef.Essential = aws.Bool(ecsContainerDef.Essential)
 
 		// CPU and Memory are expected to be set here if compose v3 was used
-		cpu = getResourceValue(inputCfg.Name, cpu, ecsContainerDef.Cpu, "CPU")
+		cpu = resolveIntResourceOverride(inputCfg.Name, cpu, ecsContainerDef.Cpu, "CPU")
 
 		ecsMemInMB := adapter.ConvertToMemoryInMB(int64(ecsContainerDef.Memory))
-		mem = getResourceValue(inputCfg.Name, mem, ecsMemInMB, "MemoryLimit")
+		mem = resolveIntResourceOverride(inputCfg.Name, mem, ecsMemInMB, "MemoryLimit")
 
 		ecsMemResInMB := adapter.ConvertToMemoryInMB(int64(ecsContainerDef.MemoryReservation))
-		memRes = getResourceValue(inputCfg.Name, memRes, ecsMemResInMB, "MemoryReservation")
-		if ecsContainerDef.HealthCheck != nil {
-			overrideHealthCheck(outputContDef, ecs.HealthCheck(*ecsContainerDef.HealthCheck))
-		}
+		memRes = resolveIntResourceOverride(inputCfg.Name, memRes, ecsMemResInMB, "MemoryReservation")
 	}
 
 	// One or both of memory and memoryReservation is required to register a task definition with ECS
@@ -207,46 +212,86 @@ func convertToContainerDef(inputCfg *adapter.ContainerConfig, ecsContainerDef *C
 	return outputContDef, nil
 }
 
-// ECS Params healthcheck overrides the healthcheck from docker compose
-func overrideHealthCheck(outputContDef *ecs.ContainerDefinition, ecsParamsHealth ecs.HealthCheck) {
-	if outputContDef.HealthCheck == nil {
-		outputContDef.SetHealthCheck(&ecsParamsHealth)
-		return
+// returns true if the container has a healthcheck from compose or ecs params
+func hasHealthCheck(inputCfg *adapter.ContainerConfig, ecsContainerDef *ContainerDef) bool {
+	if inputCfg.HealthCheck != nil {
+		return true
 	}
-	if len(ecsParamsHealth.Command) > 0 {
-		outputContDef.HealthCheck.SetCommand(ecsParamsHealth.Command)
+
+	if ecsContainerDef != nil && ecsContainerDef.HealthCheck != nil {
+		return true
 	}
-	if ecsParamsHealth.Interval != nil {
-		outputContDef.HealthCheck.Interval = ecsParamsHealth.Interval
-	}
-	if ecsParamsHealth.Retries != nil {
-		outputContDef.HealthCheck.Retries = ecsParamsHealth.Retries
-	}
-	if ecsParamsHealth.StartPeriod != nil {
-		outputContDef.HealthCheck.StartPeriod = ecsParamsHealth.StartPeriod
-	}
-	if ecsParamsHealth.Timeout != nil {
-		outputContDef.HealthCheck.Timeout = ecsParamsHealth.Timeout
-	}
+
+	return false
+
 }
 
-func getResourceValue(serviceName string, inputVal, ecsVal int64, option string) int64 {
-	if ecsVal == 0 {
-		return inputVal
+// sets the healthcheck with the ECS Params as an override
+func getHealthcheck(inputCfg *adapter.ContainerConfig, ecsContainerDef *ContainerDef) (*ecs.HealthCheck, error) {
+	healthcheck := inputCfg.HealthCheck
+	if healthcheck == nil {
+		healthcheck = &ecs.HealthCheck{}
 	}
-	if inputVal > 0 {
-		showResourceOverrideMsg(serviceName, inputVal, ecsVal, option)
+
+	if ecsContainerDef != nil && ecsContainerDef.HealthCheck != nil {
+		ecsParamsHealth := ecsContainerDef.HealthCheck
+
+		healthcheck.Command = resolveStringSliceResourceOverride(inputCfg.Name, healthcheck.Command, ecsParamsHealth.Command, "healthcheck command")
+		healthcheck.Interval = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Interval, ecsParamsHealth.Interval, "healthcheck interval")
+		healthcheck.Retries = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Retries, ecsParamsHealth.Retries, "healthcheck retries")
+		healthcheck.Timeout = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.Timeout, ecsParamsHealth.Timeout, "healthcheck timeout")
+		healthcheck.StartPeriod = resolveIntPointerResourceOverride(inputCfg.Name, healthcheck.StartPeriod, ecsParamsHealth.StartPeriod, "healthcheck start_period")
+
 	}
-	return ecsVal
+
+	// validate healthcheck
+	if len(healthcheck.Command) == 0 {
+		return healthcheck, fmt.Errorf("Test/Command is a required field for container healthcheck")
+	}
+
+	return healthcheck, nil
 }
 
-func showResourceOverrideMsg(serviceName string, oldValue int64, newValue int64, option string) {
+func resolveIntResourceOverride(serviceName string, composeVal, ecsParamsVal int64, option string) int64 {
+	if composeVal > 0 && ecsParamsVal > 0 {
+		showResourceOverrideMsg(serviceName, composeVal, ecsParamsVal, option)
+	}
+	if ecsParamsVal > 0 {
+		return ecsParamsVal
+	}
+	return composeVal
+}
+
+func resolveIntPointerResourceOverride(serviceName string, composeVal, ecsParamsVal *int64, option string) *int64 {
+	if composeVal != nil && ecsParamsVal != nil {
+		showResourceOverrideMsg(serviceName, aws.Int64Value(composeVal), aws.Int64Value(ecsParamsVal), option)
+	}
+	if ecsParamsVal != nil {
+		return ecsParamsVal
+	}
+	return composeVal
+}
+
+func resolveStringSliceResourceOverride(serviceName string, composeVal, ecsParamsVal []*string, option string) []*string {
+	if len(composeVal) > 0 && len(ecsParamsVal) > 0 {
+		log.WithFields(log.Fields{
+			"option name":  option,
+			"service name": serviceName,
+		}).Infof("Using ecs-params value as override")
+	}
+	if len(ecsParamsVal) > 0 {
+		return ecsParamsVal
+	}
+	return composeVal
+}
+
+func showResourceOverrideMsg(serviceName string, val int64, override int64, option string) {
 	overrideMsg := "Using ecs-params value as override (was %v but is now %v)"
 
 	log.WithFields(log.Fields{
 		"option name":  option,
 		"service name": serviceName,
-	}).Infof(overrideMsg, oldValue, newValue)
+	}).Infof(overrideMsg, val, override)
 }
 
 // convertToECSVolumes transforms the map of hostPaths to the format of ecs.Volume
