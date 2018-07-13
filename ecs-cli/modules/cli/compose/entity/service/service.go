@@ -364,8 +364,9 @@ func (s *Service) EntityType() types.Type {
 // createService calls the underlying ECS.CreateService
 func (s *Service) createService() error {
 	serviceName := entity.GetServiceName(s)
-	taskDefinitionID := entity.GetIdFromArn(s.TaskDefinition().TaskDefinitionArn)
+	taskDefName := entity.GetIdFromArn(s.TaskDefinition().TaskDefinitionArn)
 	launchType := s.Context().CommandConfig.LaunchType
+	cluster := s.Context().CommandConfig.Cluster
 
 	networkConfig, err := composeutils.ConvertToECSNetworkConfiguration(s.ecsContext.ECSParams)
 	if err != nil {
@@ -377,11 +378,58 @@ func (s *Service) createService() error {
 	if s.healthCheckGP != nil && s.loadBalancer == nil {
 		return fmt.Errorf("--%v is only valid for services configured to use load balancers", flags.HealthCheckGracePeriodFlag)
 	}
+	deploymentConfig := s.DeploymentConfig()
+	healthCheckGracePeriod := s.healthCheckGP
 
-	err = s.Context().ECSClient.CreateService(serviceName, taskDefinitionID, s.loadBalancer, s.role, s.DeploymentConfig(), networkConfig, launchType, s.healthCheckGP)
+	createServiceInput := &ecs.CreateServiceInput{
+		DesiredCount:            aws.Int64(0),            // Required
+		ServiceName:             aws.String(serviceName), // Required
+		TaskDefinition:          aws.String(taskDefName), // Required
+		Cluster:                 aws.String(cluster),
+		DeploymentConfiguration: deploymentConfig,
+		LoadBalancers:           []*ecs.LoadBalancer{s.loadBalancer},
+		Role:                    aws.String(s.role),
+	}
+
+	if healthCheckGracePeriod != nil {
+		createServiceInput.HealthCheckGracePeriodSeconds = aws.Int64(*healthCheckGracePeriod)
+	}
+
+	if networkConfig != nil {
+		createServiceInput.NetworkConfiguration = networkConfig
+	}
+
+	if launchType != "" {
+		createServiceInput.LaunchType = aws.String(launchType)
+	}
+
+	if err = createServiceInput.Validate(); err != nil {
+		return err
+	}
+
+	// Call ECS Client
+	err = s.Context().ECSClient.CreateService(serviceName, createServiceInput)
 	if err != nil {
 		return err
 	}
+
+	// Log create service success
+	fields := log.Fields{
+		"service":        serviceName,
+		"taskDefinition": taskDefName,
+	}
+	if deploymentConfig != nil && deploymentConfig.MaximumPercent != nil {
+		fields["deployment-max-percent"] = aws.Int64Value(deploymentConfig.MaximumPercent)
+	}
+	if deploymentConfig != nil && deploymentConfig.MinimumHealthyPercent != nil {
+		fields["deployment-min-healthy-percent"] = aws.Int64Value(deploymentConfig.MinimumHealthyPercent)
+	}
+	if healthCheckGracePeriod != nil {
+		fields["health-check-grace-period"] = *healthCheckGracePeriod
+	}
+
+	log.WithFields(fields).Info("Created an ECS service")
+
 	return nil
 }
 
