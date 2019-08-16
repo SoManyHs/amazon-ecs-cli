@@ -1,0 +1,46 @@
+module github.com/aws/amazon-ecs-cli/ecs-cli
+
+go 1.12
+
+require (
+	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
+	github.com/Microsoft/go-winio v0.3.7
+	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5
+	github.com/aws/amazon-ecs-cli v1.15.1
+	github.com/aws/aws-sdk-go v1.19.22
+	github.com/awslabs/amazon-ecr-credential-helper v0.3.0
+	github.com/containerd/continuity v0.0.0-20171215195539-b2b946a77f59
+	github.com/davecgh/go-spew v1.1.1
+	github.com/docker/cli v0.0.0-20190402082642-c89750f836c5
+	github.com/docker/distribution v2.7.1+incompatible
+	github.com/docker/docker v0.0.0-20180220021536-8e435b8279f2
+	github.com/docker/go-connections v0.4.0
+	github.com/docker/go-units v0.4.0
+	github.com/docker/libcompose v0.0.0-20171025083809-57bd716502dc
+	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568
+	github.com/fsouza/go-dockerclient v0.0.0-20161216020517-4a934a8fd3ec
+	github.com/go-ini/ini v1.32.0
+	github.com/gogo/protobuf v0.0.0-20180104102128-160de10b2537
+	github.com/golang/mock v0.0.0-20190311213431-837231f7bb37
+	github.com/hashicorp/go-cleanhttp v0.0.0-20160407174126-ad28ea4487f0
+	github.com/imdario/mergo v0.3.4
+	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+	github.com/mattn/go-shellwords v1.0.3
+	github.com/mitchellh/go-homedir v0.0.0-20160301183130-981ab348d865
+	github.com/mitchellh/mapstructure v0.0.0-20180220230111-00c29f56e238
+	github.com/opencontainers/go-digest v1.0.0-rc1
+	github.com/opencontainers/image-spec v0.0.0-20171125024018-577479e4dc27
+	github.com/opencontainers/runc v0.0.0-20161227072456-f376b8033d2c
+	github.com/pkg/errors v0.0.0-20161029093637-248dadf4e906
+	github.com/pmezard/go-difflib v1.0.0
+	github.com/sirupsen/logrus v1.4.2
+	github.com/stretchr/testify v1.3.0
+	github.com/urfave/cli v0.0.0-20170215051705-2526b57c56f3
+	github.com/xeipuuv/gojsonpointer v0.0.0-20151027082146-e0fe6f683076
+	github.com/xeipuuv/gojsonreference v0.0.0-20150808065054-e02fc20de94c
+	github.com/xeipuuv/gojsonschema v0.0.0-20161119180151-e18f0065e8c1
+	golang.org/x/crypto v0.0.0-20180111101123-5f55bce93ad2
+	golang.org/x/net v0.0.0-20190213061140-3a22650c66bd
+	golang.org/x/sys v0.0.0-20190422165155-953cdadca894
+	gopkg.in/yaml.v2 v2.0.0-20160928153709-a5b47d31c556
+)
