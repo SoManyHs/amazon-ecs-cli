@@ -21,6 +21,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/aws/amazon-ecs-cli/ecs-cli/integ"
 	"github.com/aws/amazon-ecs-cli/ecs-cli/integ/cmd"
 
 	"github.com/stretchr/testify/require"
@@ -38,13 +39,15 @@ func TestCreateClusterWithFargateService(t *testing.T) {
 	defer cmd.TestDown(t, conf)
 
 	// Create the files for a task definition
-	project := cmd.NewProject("e2e-fargate-test-service", conf.ConfigName)
+	projectName := integ.SuggestedResourceName("e2e-fargate-test-service")
+	project := cmd.NewProject(projectName, conf.ConfigName)
 	project.ComposeFileName = createFargateTutorialComposeFile(t)
 	project.ECSParamsFileName = createFargateTutorialECSParamsFile(t, vpc.Subnets)
 	defer os.Remove(project.ComposeFileName)
 	defer os.Remove(project.ECSParamsFileName)
 
 
+	// todo could create then defer clean up, then call up?
 	// Create a new service
 	cmd.TestServiceUp(t, project)
 

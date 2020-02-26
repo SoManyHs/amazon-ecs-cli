@@ -104,8 +104,8 @@ func waitForServiceDescribable(service *Service) error {
 	}, service)
 }
 
-// waitForServiceTasks continuously polls ECS (by calling describeService) and waits for service to get stable
-// with desiredCount == runningCount
+// waitForServiceTasks continuously polls ECS (by calling describeService) and
+// waits for service to get stable with desiredCount == runningCount
 func waitForServiceTasks(service *Service, ecsServiceName string) error {
 	eventsLogged := make(map[string]bool)
 	var lastRunningCount int64
